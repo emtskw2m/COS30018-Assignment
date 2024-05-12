@@ -19,7 +19,7 @@ import assets.MapFrame;
 public class MasterRoutingAgent extends Agent {
     private Map<AID, Integer> availableAgentCapacities = new HashMap<>();
     private AtomicInteger receivedCapacities;
-    private Queue<Integer> undeliveredPackages = new LinkedList<>();
+    private Queue<PackageDetail> undeliveredPackages = new LinkedList<>();
     private int expectedNumberOfDeliveringAgents = 4; // Adjust based on the number of DeliveringAgents
 
     protected void setup() {
@@ -58,9 +58,12 @@ public class MasterRoutingAgent extends Agent {
                 if (msg.getContent().startsWith("Capacity:")) {
                     handleCapacityUpdate(msg);
                 } else if (msg.getContent().startsWith("PackageQuantity:")) {
-                    int quantity = Integer.parseInt(msg.getContent().substring(16));
+                    String[] parts = msg.getContent().split(";");
+                    int quantity = Integer.parseInt(parts[0].substring(16));
+                    String route = parts[1].substring(6);
                     requestAgentCapacities();
-                    undeliveredPackages.add(quantity);
+                    undeliveredPackages.add(new PackageDetail(quantity, route));
+                    System.out.println("Received order for " + quantity + " packages to " + route);
                 }
                 break;
             case ACLMessage.REQUEST:
@@ -96,7 +99,10 @@ public class MasterRoutingAgent extends Agent {
         System.out.println("Requested capacities from all DeliveringAgents.");
     }
 
-    private void handlePackageAssignment(int quantity) {
+    private void handlePackageAssignment(PackageDetail packageDetail) {
+        int quantity = packageDetail.getQuantity();
+        String route = packageDetail.getRoute();
+
         while (quantity > 0 && !availableAgentCapacities.isEmpty()) {
             Optional<Map.Entry<AID, Integer>> optAgent = availableAgentCapacities.entrySet().stream()
                 .filter(entry -> entry.getValue() > 0)
@@ -105,23 +111,41 @@ public class MasterRoutingAgent extends Agent {
             if (optAgent.isPresent()) {
                 Map.Entry<AID, Integer> agent = optAgent.get();
                 int assignableQuantity = Math.min(quantity, agent.getValue());
-                assignPackage(agent.getKey(), assignableQuantity);
+                assignPackage(agent.getKey(), assignableQuantity, route);
                 quantity -= assignableQuantity;
                 int newCapacity = availableAgentCapacities.get(agent.getKey()) - assignableQuantity;
                 availableAgentCapacities.put(agent.getKey(), newCapacity);
-                System.out.println("Assigned " + assignableQuantity + " packages to " + agent.getKey().getLocalName());
+                System.out.println("Assigned " + assignableQuantity + " packages to " + agent.getKey().getLocalName() + " following " + route);
             } else {
                 System.out.println("Remaining package of size: " + quantity);
-                undeliveredPackages.add(quantity);
+                undeliveredPackages.add(new PackageDetail(quantity, route));
                 break;
             }
         }
     }
 
-    private void assignPackage(AID agentAID, int quantity) {
+    private void assignPackage(AID agentAID, int quantity, String route) {
         ACLMessage assignMsg = new ACLMessage(ACLMessage.REQUEST);
         assignMsg.addReceiver(agentAID);
-        assignMsg.setContent(String.valueOf(quantity));
+        assignMsg.setContent(quantity + " packages assigned; Route: " + route);
         send(assignMsg);
+    }
+}
+
+class PackageDetail {
+    private int quantity;
+    private String route;
+
+    public PackageDetail(int quantity, String route) {
+        this.quantity = quantity;
+        this.route = route;
+    }
+
+    public int getQuantity() {
+        return quantity;
+    }
+
+    public String getRoute() {
+        return route;
     }
 }

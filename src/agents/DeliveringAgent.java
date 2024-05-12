@@ -10,7 +10,7 @@ import java.util.Random;
 public class DeliveringAgent extends Agent {
     private int maxCapacity;
     private int currentLoad = 0;
-    private String status;  // Added to track the status of the agent
+    private String status;  
 
     protected void setup() {
         Object[] args = getArguments();
@@ -26,20 +26,19 @@ public class DeliveringAgent extends Agent {
         System.out.println(getLocalName() + " with capacity " + maxCapacity + " and status " + status + " is ready.");
 
         addBehaviour(new CyclicBehaviour(this) {
-            public void action() {
-                MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
-                ACLMessage msg = myAgent.receive(mt);
-                if (msg != null) {
-                    if ("RequestCapacity".equals(msg.getContent())) {
-                        sendCapacityUpdate();
-                    } else {
-                        int quantity = Integer.parseInt(msg.getContent());
-                        handlePackageRequest(msg, quantity);
-                    }
-                } else {
-                    block();
-                }
-            }
+        	public void action() {
+        	    MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
+        	    ACLMessage msg = myAgent.receive(mt);
+        	    if (msg != null) {
+        	        if ("RequestCapacity".equals(msg.getContent())) {
+        	            sendCapacityUpdate();
+        	        } else {
+        	            handlePackageRequest(msg, msg.getContent());
+        	        }
+        	    } else {
+        	        block();
+        	    }
+        	}
         });
     }
 
@@ -50,23 +49,32 @@ public class DeliveringAgent extends Agent {
         send(capacityUpdate);
     }
 
-    private void handlePackageRequest(ACLMessage msg, int quantity) {
-        if (quantity + currentLoad <= maxCapacity && "available".equals(status)) {
-            currentLoad += quantity;
-            ACLMessage reply = msg.createReply();
-            reply.setPerformative(ACLMessage.INFORM);
-            // Include the package size in the message content
-            reply.setContent("Package(" + quantity + ") received by " + getLocalName() + ", delivery start.");
-            send(reply);
-            System.out.println("Package(" + quantity + ") received by " + getLocalName() + ", delivery start.");
-            // Simulate delivery completion
-            currentLoad -= quantity;  // Assume instant delivery for simplicity
-            sendCapacityUpdate();
-        } else {
-            ACLMessage reply = msg.createReply();
-            reply.setPerformative(ACLMessage.REFUSE);
-            reply.setContent("Capacity exceeded or not available. Current load: " + currentLoad);
-            send(reply);
+    private void handlePackageRequest(ACLMessage msg, String content) {
+        try {
+            String[] parts = content.split("; ");
+            int quantity = Integer.parseInt(parts[0].split(" ")[0]);
+            String route = parts[1].substring(6); 
+
+            if (quantity + currentLoad <= maxCapacity && "available".equals(status)) {
+                currentLoad += quantity;
+                ACLMessage reply = msg.createReply();
+                reply.setPerformative(ACLMessage.INFORM);
+                reply.setContent("Package(" + quantity + ") received by " + getLocalName() + ", following route " + route + ", delivery start.");
+                send(reply);
+                System.out.println("Package(" + quantity + ") received by " + getLocalName() + ", following route " + route + ", delivery start.");
+                // Simulate delivery completion
+                currentLoad -= quantity;  // Assume instant delivery for simplicity
+                sendCapacityUpdate();
+            } else {
+                ACLMessage reply = msg.createReply();
+                reply.setPerformative(ACLMessage.REFUSE);
+                reply.setContent("Capacity exceeded or not available. Current load: " + currentLoad);
+                send(reply);
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("Error parsing package quantity: " + e.getMessage());
+            e.printStackTrace();
         }
     }
+
 }
